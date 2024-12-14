@@ -1,0 +1,7 @@
+---
+ title: "Анализ данных сетевого трафика при помощи библиотеки Arrow"
+ author: "odintsovajulia19@yandex.ru"
+ format: 
+   md:
+     output-file: README.md
+---
