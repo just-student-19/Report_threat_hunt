@@ -49,7 +49,6 @@ odintsovajulia19@yandex.ru
 #git config --global user.name "just-student-19"
 #git config --global user.email "odintsovajulia19@yandex.ru"
 #git branch -m master main
-#git push origin --delete master
 #git remote add origin git@github.com:just-student-19/Report_threat_hunt.git
 ```
 
