@@ -18,7 +18,7 @@ odintsovajulia19@yandex.ru
 ## Исходные данные
 
 1.  Программное обеспечение Windows 10.
-2.  RStudio Server (использовалась учетка user35).
+2.  RStudio Desktop
 3.  Интерпретатор языка R 4.1.
 4.  Программный пакет swirl.
 

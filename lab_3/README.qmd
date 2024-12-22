@@ -1,0 +1,192 @@
+---
+ title: "Основы обработки данных с помощью R и Dplyr"
+ author: "odintsovajulia19@yandex.ru"
+ format: 
+   md:
+     output-file: README.md
+---
+
+## Цель работы 
+
+ Развить практические навыки использования языка программирования R для
+ обработки данных
+ 2. Закрепить знания базовых типов данных языка R
+ 3. Развить практические навыки использования функций обработки данных пакета
+ dplyr – функции 
+select(), filter(), mutate(), arrange(), group_by(
+
+## Исходные данные 
+ 
+1. Программное обеспечение Windows 10 
+2. Rstudio Desktop
+3. Интерпретатор языка R 4.1
+4. Dplyr.
+5. Пакет данных nycflights13.
+
+## Задание
+
+Используя язык программирования R выполнить задания
+и составить отчет.
+
+## Ход работы
+
+-Подготовим рабочую среду
+
+```{r}
+library(dplyr)
+#install.packages('nycflights13')
+library(nycflights13)
+```
+
+### Задание 1:Сколько встроенных в пакет nycflights13 датафреймов?
+
+
+
+```{r}
+length(data(package = "nycflights13")$results[, "Item"])
+```
+
+### Задание 2:Сколько строк в каждом датафрейме?
+
+```{r}
+row_count = list(
+  flights = nrow(flights),
+  airlines = nrow(airlines),
+  airports = nrow(airports),
+  planes = nrow(planes),
+  weather = nrow(weather))
+print(row_count)
+```
+
+### Задание 3:Сколько столбцов в каждом датафрейме?
+
+```{r}
+col_count = list(
+  flights = ncol(flights),
+  airlines = ncol(airlines),
+  airports = ncol(airports),
+  planes = ncol(planes),
+  weather = ncol(weather))
+print(col_count)
+```
+
+### Задание 4: Как просмотреть примерный вид датафрейма?
+
+```{r}
+df_flights = flights %>% glimpse()
+print(df_flights)
+```
+
+### Задание 5: Сколько компаний-перевозчиков (carrier) учитывают эти наборы данных (представлено в наборах данных)?
+
+```{r}
+carrier = 
+  flights %>% 
+  filter(!is.na(carrier)) %>% 
+  distinct(carrier) %>% 
+  nrow()
+print(carrier)
+```
+
+### Задание 6: Сколько рейсов принял аэропорт John F Kennedy Intl в мае?
+
+```{r}
+jfk_may_flights = 
+  flights %>% 
+  filter(dest == "JFK", month == 5) %>% 
+  nrow()
+print(jfk_may_flights)
+```
+
+### Задание 7: Какой самый северный аэропорт?
+
+```{r}
+northernmost_airport = 
+  airports %>%
+  filter(lat == max(lat)) %>%
+  select(faa, name, lat, lon)
+print(northernmost_airport)
+```
+
+### Задание 8: Какой аэропорт самый высокогорный (находится выше всех над уровнем моря)?
+
+```{r}
+highest_airport = 
+  airports %>%
+  filter(alt == max(alt, na.rm = TRUE)) %>%
+  mutate(alt_meters = round(alt * 0.3048)) %>%
+  select(faa, name, alt, alt_meters)
+print(highest_airport)
+```
+
+### Задание 9: Какие бортовые номера у самых старых самолетов?
+
+```{r}
+oldest_tailnum = 
+  planes %>% 
+  arrange(year) %>% 
+  head(1) %>% 
+  select(tailnum)
+print(oldest_tailnum)
+```
+
+### Задание 10:  Какая средняя температура воздуха была в сентябре в аэропорту John F Kennedy Intl (в градусах Цельсия)?
+
+```{r}
+jfk_sept_weather_f = 
+  weather %>%
+  filter(origin == "JFK", month == 9) %>%
+  summarise(average_temp = mean(temp, na.rm = TRUE))
+jfk_sept_weather_c =(jfk_sept_weather_f - 32) * 5 / 9
+print(jfk_sept_weather_c)
+```
+
+### Задание 11: Самолеты какой авиакомпании совершили больше всего вылетов в июне?
+
+```{r}
+top_airline_june = 
+  flights %>%
+  filter(month == 6) %>%
+  group_by(carrier) %>%
+  summarise(num_flights = n()) %>%
+  arrange(desc(num_flights)) %>%
+  slice(1)
+print(top_airline_june)
+```
+
+### Задание 12: Самолеты какой авиакомпании задерживались чаще других в 2013 году?
+
+```{r}
+delayed_airline_depart = 
+  flights %>%
+  filter(dep_delay > 0) %>%  
+  group_by(carrier) %>%
+  summarise(num_delays = n()) %>%
+  arrange(desc(num_delays)) %>%
+  slice(1) %>%
+  mutate(delay_type = "Departure") %>% 
+  select(carrier, delay_type, num_delays)
+
+delayed_airline_arrive = 
+  flights %>%
+  filter(arr_delay > 0) %>%  
+  group_by(carrier) %>%
+  summarise(num_delays = n()) %>%
+  arrange(desc(num_delays)) %>%
+  slice(1) %>%
+  mutate(delay_type = "Arrival") %>%
+  select(carrier, delay_type, num_delays)
+
+delayed_airlines = bind_rows(delayed_airline_depart, delayed_airline_arrive)
+
+print(delayed_airlines)
+```
+
+## Оценка результата
+
+С использованием инструментов dplyr и RStudio были проделаны задания по основам обработки данных.
+
+## Вывод 
+
+Провели работу с dplyr, пакетом nycflights13, ознакомились с технологиями подготовки и анализа данных.
+ 
