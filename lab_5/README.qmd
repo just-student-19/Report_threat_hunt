@@ -1,0 +1,267 @@
+---
+ title: " Исследование информации о состоянии беспроводных сетей"
+ author: "odintsovajulia19@yandex.ru"
+ format: 
+   md:
+     output-file: README.md
+---
+
+## Цель работы 
+
+ 1. Получить знания о методах исследования радиоэлектронной обстановки.
+ 2. Составить представление о механизмах работы Wi-Fi сетей на канальном и
+ сетевом уровне модели OSI.
+ 3. Зекрепить практические навыки использования языка программирования R для
+ обработки данных
+ 4. Закрепить знания основных функций обработки данных экосистемы 
+языка R
+
+## Исходные данные 
+ 
+1. Программное обеспечение Windows 10 
+2. Rstudio Desktop
+3. Интерпретатор языка R 4.1
+4. Dplyr.
+5. Данные p2_wifi_data.csv.
+
+## Задание
+
+Используя программный пакет dplyr языка программирования R провести анализ журналов и ответить на вопросы.
+
+## Ход работы
+
+### Подготовка рабочей среды
+
+```{r}
+library(tidyverse)
+```
+
+- Импортируем данные и приведем датасеты в вид “аккуратных данных”
+
+```{r}
+data1 = read.csv("P2_wifi_data.csv", nrows = 167)
+
+data1 = data1 %>%
+  mutate(across(c(BSSID, Privacy, Cipher, Authentication, LAN.IP, ESSID), 
+                 \(x) trimws(x))) %>%
+  mutate(across(c(BSSID, Privacy, Cipher, Authentication, LAN.IP, ESSID), 
+                 \(x) na_if(x, "")))
+
+data1$First.time.seen = as.POSIXct(data1$First.time.seen, format = "%Y-%m-%d %H:%M:%S")
+data1$Last.time.seen = as.POSIXct(data1$Last.time.seen, format = "%Y-%m-%d %H:%M:%S")
+```
+
+```{r}
+data2 = read.csv("P2_wifi_data.csv", skip = 170)
+
+data2 = data2 %>%
+  mutate(across(c(Station.MAC, BSSID, Probed.ESSIDs), 
+                 \(x) trimws(x))) %>%
+  mutate(across(c(Station.MAC, BSSID, Probed.ESSIDs), 
+                 \(x) na_if(x, "")))
+
+data2$First.time.seen = as.POSIXct(data2$First.time.seen, format = "%Y-%m-%d %H:%M:%S")
+data2$Last.time.seen = as.POSIXct(data2$Last.time.seen, format = "%Y-%m-%d %H:%M:%S")
+```
+
+```{r}
+glimpse(data1)
+```
+
+```{r}
+glimpse(data2)
+```
+
+## Точки доступа
+
+### Задание 1: Определить небезопасные точки доступа (без шифрования – OPN)
+
+```{r}
+
+unsafe_access_points = 
+  data1 %>% 
+  filter(grepl("OPN", Privacy)) %>% 
+  select(BSSID, Privacy)  
+
+print(unsafe_access_points) 
+```
+
+### Задание 2: Определить производителя для каждого обнаруженного устройства
+
+- В BSSID первые три группы MAC-адреса идентифицируют производителя устройства
+
+```{r}
+unsafe_bssid = 
+     data1 %>% 
+     filter(grepl("OPN", Privacy)) %>%
+     select(BSSID) %>%
+     mutate(BSSID_trimmed = sub("(:[0-9A-Fa-f]{2}){3}$", "", BSSID)) %>%  
+     distinct(BSSID_trimmed)
+
+print(unsafe_bssid)
+```
+
+- Воспользуемся онлайн сервисами OUI lookup и получим следующие данные:
+
+00:03:7A Taiyo Yuden Co., Ltd.
+
+00:03:7F Atheros Communications, Inc.
+
+00:25:00 Apple, Inc.
+
+00:26:99 Cisco Systems, Inc
+
+E0:D9:E3 Eltex Enterprise Ltd.
+
+E8:28:C1 Eltex Enterprise Ltd.
+
+Для остальных устройств совпадений в бд не найдено.
+
+### Задание 3:Выявить устройства, использующие последнюю версию протокола шифрования WPA3, и названия точек доступа, реализованных на этих устройствах
+
+```{r}
+wpa3_dev = 
+  data1 %>% 
+  filter(grepl("WPA3", Privacy)) %>% 
+  select(BSSID, Privacy)
+
+print(wpa3_dev)
+```
+
+### Задание 4: Отсортировать точки доступа по интервалу времени, в течение которого они находились на связи, по убыванию.
+
+```{r}
+connection_time = 
+  data1 %>%
+  mutate(time = difftime(Last.time.seen, First.time.seen, units = "secs")) %>%
+  arrange(desc(time)) %>%
+  select(BSSID, time)
+print(connection_time)
+```
+
+### Задание 5: Обнаружить топ-10 самых быстрых точек доступа.
+```{r}
+fast_points = 
+   data1 %>% 
+   arrange(desc(Speed)) %>% slice(1:10)  %>% 
+   select(BSSID, Speed)
+print(fast_points)
+```
+
+### Задание 6: Отсортировать точки доступа по частоте отправки запросов (beacons) в единицу времени по их убыванию.
+
+```{r}
+beacons_rate = 
+  data1 %>%
+  mutate(beacons_rate =  X..beacons / as.numeric(difftime(Last.time.seen,  First.time.seen, units = "secs"))) %>%  
+  filter(!is.infinite(beacons_rate) & !is.nan(beacons_rate)) %>%
+  arrange(desc(beacons_rate)) %>% 
+  select(BSSID, beacons_rate)
+print(beacons_rate)
+```
+
+## Данные клиентов
+
+### Задание 1: Определить производителя для каждого обнаруженного устройства
+
+- В BSSID первые три группы MAC-адреса идентифицируют производителя устройства. Также отфильтруем значения не в формате MAC-адреса
+
+```{r}
+user_bssid =
+  data2 %>%
+  filter(BSSID != '(not associated)') %>%
+  filter(grepl("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$", BSSID)) %>%  
+  mutate(BSSID_trimmed = substr(BSSID, 1, 8)) %>%
+  select(BSSID_trimmed)
+print(unique(user_bssid))
+```
+
+- Воспользуемся онлайн сервисами OUI lookup и получим следующие данные:
+
+00:03:7F Atheros Communications, Inc.
+
+00:0D:97 Hitachi Energy USA Inc.
+
+00:23:EB Cisco Systems, Inc
+
+00:25:00 Apple, Inc.
+
+00:26:99 Cisco Systems, Inc
+
+08:3A:2F Guangzhou Juan Intelligent Tech Joint Stock Co.,Ltd
+
+0C:80:63 Tp-Link Technologies Co.,Ltd.
+
+DC:09:4C Huawei Technologies Co.,Ltd
+
+E0:D9:E3 Eltex Enterprise Ltd.
+
+E8:28:C1 Eltex Enterprise Ltd.
+
+Для остальных устройств совпадений в бд не найдено.
+
+### Задание 2: Обнаружить устройства, которые НЕ рандомизируют свой MAC адрес
+
+- Обычно устройства, которые рандомизируют свои MAC-адреса, будут показывать различные значения в разных сессиях или при повторных сканированиях.
+
+```{r}
+non_randomized_devices =
+  data2 %>%
+  filter(BSSID != '(not associated)') %>%
+  filter(grepl("^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$", BSSID)) %>%
+  group_by(BSSID) %>%
+  summarise(count = n()) %>%
+  filter(count == 1) %>%  
+  select(BSSID)
+print(unique(non_randomized_devices))
+```
+
+### Задание 3: Кластеризовать запросы от устройств к точкам доступа по их именам. Определить время появления устройства в зоне радиовидимости и время выхода его из нее.
+
+```{r}
+device_visibility =
+  data2 %>% 
+  group_by(Probed.ESSIDs) %>% 
+  summarise(
+  first_seen = min(First.time.seen, na.rm = TRUE),
+  last_seen = max(Last.time.seen, na.rm = TRUE),
+  .groups = 'drop' )
+print(device_visibility)
+```
+
+### Задание 4: Оценить стабильность уровня сигнала внури кластера во времени. Выявить наиболее стабильный кластер. 
+
+- Для оценки стабильности оценить математическое ожидание и среднеквадратичное отклонение для каждого найденного кластера.
+- Преобразуем столбец power в числовые значения для оценки
+
+```{r}
+data2$Power <- as.numeric(as.character(data2$Power))
+
+na_values <- data2 %>% filter(is.na(Power))
+
+signal_stability <- data2 %>%
+  filter(!is.na(Probed.ESSIDs), !is.na(Power)) %>%  
+  group_by(Probed.ESSIDs) %>%
+  summarise(
+    mean_signal = mean(Power, na.rm = TRUE),  
+    sd_signal = sd(Power, na.rm = TRUE),      
+    .groups = 'drop'  
+  ) %>%
+  arrange(sd_signal, mean_signal)  
+
+
+most_stable_cluster <- signal_stability %>%
+  slice(1)  
+
+print(signal_stability)
+print(most_stable_cluster)
+```
+
+## Оценка результата
+
+С использованием инструментов tidyverse и RStudio были проделаны задания по основам обработки данных.
+
+## Вывод 
+
+Провели работу с tidyverse, данными p2_wif_data, повторили технологии подготовки и анализа данных.
+ 
