@@ -1,7 +1,7 @@
-# Анализ данных сетевого трафика с использованием аналитической in-memory СУБД DuckDB
+# Анализ данных сетевого трафика с использованием аналитической
+in-memory СУБД DuckDB
 odintsovajulia19@yandex.ru
 
-Изначально работа проходила под логином user11.
 
 ## Цель работы
 
@@ -10,24 +10,61 @@ odintsovajulia19@yandex.ru
 2.  Получить навыки применения DuckDB совместно с языком
     программирования R
 3.  Получить навыки анализа метаинфомации о сетевом трафике
-4.  Получить навыки применения облачных технологий хранения, подготовки
-    и анализа данных: Yandex Object Storage, Rstudio Server.
 
 ## Исходные данные
 
 1.  Программное обеспечение Windows 10
 2.  Данные tm_data.pqt
-3.  Rstudio Server
+3.  Rstudio Desktop
 4.  Интерпретатор языка R 4.1
 5.  DuckDB и Dplyr.
 
 ## Задание
 
-Используя язык программирования R, OLAP СУБД DuckDB библиотеку duckdb и
-облачную IDE Rstudio Server, развернутую в Yandex Cloud, выполнить
-задания и составить отчет.
+Используя язык программирования R, OLAP СУБД
+DuckDB библиотеку duckdb и IDE Rstudio
+Desktop, выполнить задания
+и составить отчет.
+
 
 ## Ход работы
+
+### Подготовим рабочую среду
+
+``` r
+library(duckdb)
+```
+
+    Warning: пакет 'duckdb' был собран под R версии 4.4.2
+
+    Загрузка требуемого пакета: DBI
+
+    Warning: пакет 'DBI' был собран под R версии 4.4.2
+
+``` r
+library(dplyr)
+```
+
+    Warning: пакет 'dplyr' был собран под R версии 4.4.2
+
+
+    Присоединяю пакет: 'dplyr'
+
+    Следующие объекты скрыты от 'package:stats':
+
+        filter, lag
+
+    Следующие объекты скрыты от 'package:base':
+
+        intersect, setdiff, setequal, union
+
+``` r
+download.file("https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",destfile = "tm_data.pqt")
+con <- dbConnect(duckdb())
+dbExecute(con,"CREATE TABLE new_tbl as SELECT * FROM read_parquet('tm_data.pqt')")
+```
+
+    [1] 105747730
 
 ### Задание 1: Надите утечку данных из Вашей сети
 
@@ -38,61 +75,17 @@ odintsovajulia19@yandex.ru
 в Интернете, чем остальные компьютеры нашей сети. Определите его
 IP-адрес.
 
--Подготовим рабочую среду
-
 ``` r
-options(timeout = 1000000)
-download.file("https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",destfile = "tm_data.pqt")
-library(duckdb)
-```
-
-    Loading required package: DBI
-
-``` r
-library(dplyr)
-```
-
-
-    Attaching package: 'dplyr'
-
-    The following objects are masked from 'package:stats':
-
-        filter, lag
-
-    The following objects are masked from 'package:base':
-
-        intersect, setdiff, setequal, union
-
-``` r
-con <- dbConnect(duckdb())
-dbExecute(con,"CREATE TABLE tbl as SELECT * FROM read_parquet('tm_data.pqt')")
-```
-
-    [1] 105747730
-
-1.  Решение
-
-``` r
-dbGetQuery(con,"SELECT src FROM tbl
-WHERE (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%') 
-AND NOT (dst LIKE '12.%' AND dst LIKE '13.%' AND dst LIKE '14.%')
+leak_1 = dbGetQuery(con,
+"SELECT src FROM new_tbl
 GROUP BY src
 order by sum(bytes) desc
-limit 1") %>% knitr::kable()
+limit 1") 
+print(leak_1)
 ```
 
-<table>
-<thead>
-<tr class="header">
-<th style="text-align: left;">src</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">13.37.84.125</td>
-</tr>
-</tbody>
-</table>
+               src
+    1 13.37.84.125
 
 ### Задание 2: Надите утечку данных 2
 
@@ -103,169 +96,72 @@ limit 1") %>% knitr::kable()
 адрес отличается от нарушителя из предыдущей задачи.
 
 ``` r
-dbGetQuery(con,"SELECT 
-    time,
-    COUNT(*) AS trafictime
+work_hours = dbGetQuery(con,
+"SELECT hour, COUNT(*) AS work_hours
 FROM (
     SELECT 
         timestamp,
         src,
         dst,
         bytes,
-        (
-            (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%')
-            AND (dst NOT LIKE '12.%' AND dst NOT LIKE '13.%' AND dst NOT LIKE '14.%')
-        ) AS trafic,
-        EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS time
-    FROM tbl
+        EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS hour
+    FROM new_tbl
 ) sub
-WHERE trafic = TRUE AND time BETWEEN 0 AND 24
-GROUP BY time
-ORDER BY trafictime DESC;") %>% knitr::kable()
+WHERE hour BETWEEN 0 AND 24
+GROUP BY hour
+ORDER BY work_hours DESC;") 
+print(work_hours)
 ```
 
-<table>
-<thead>
-<tr class="header">
-<th style="text-align: right;">time</th>
-<th style="text-align: right;">trafictime</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">16</td>
-<td style="text-align: right;">4490576</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">22</td>
-<td style="text-align: right;">4489703</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">18</td>
-<td style="text-align: right;">4489386</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">23</td>
-<td style="text-align: right;">4488093</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">19</td>
-<td style="text-align: right;">4487345</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">21</td>
-<td style="text-align: right;">4487109</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">17</td>
-<td style="text-align: right;">4483578</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">20</td>
-<td style="text-align: right;">4482712</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">13</td>
-<td style="text-align: right;">169617</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">169241</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">0</td>
-<td style="text-align: right;">169068</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">3</td>
-<td style="text-align: right;">169050</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">14</td>
-<td style="text-align: right;">169028</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">169015</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">12</td>
-<td style="text-align: right;">168892</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">168750</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">2</td>
-<td style="text-align: right;">168711</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">168684</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">1</td>
-<td style="text-align: right;">168539</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">168422</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">15</td>
-<td style="text-align: right;">168355</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">168283</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">9</td>
-<td style="text-align: right;">168283</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">168205</td>
-</tr>
-</tbody>
-</table>
+       hour work_hours
+    1    22   12237573
+    2    23   12226575
+    3    18   12226457
+    4    21   12224721
+    5    20   12220671
+    6    19   12219218
+    7    16   12217746
+    8    17   12213523
+    9     8     537639
+    10    9     495908
+    11   10     495765
+    12   13     495660
+    13   14     495598
+    14   12     495317
+    15    0     495178
+    16    2     495122
+    17    7     494972
+    18    1     494821
+    19    4     494691
+    20    6     494401
+    21   11     494401
+    22    3     494361
+    23   15     493787
+    24    5     493625
 
 -   Понимаем, что для поиска будет использоваться временной интервал 0 -
     15
 
 ``` r
-dbGetQuery(con,"
-SELECT src
+leak_2 = dbGetQuery(con,
+"SELECT src
 FROM (
-    SELECT src, SUM(bytes) AS total_bytes
+    SELECT src, SUM(bytes) AS trafic
     FROM (
         SELECT *,
-            EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS time
-        FROM tbl
+            EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS hour
+        FROM new_tbl
     ) sub
-    WHERE src <> '13.37.84.125'
-        AND (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%')
-        AND (dst NOT LIKE '12.%' AND dst NOT LIKE '13.%' AND dst NOT LIKE '14.%')
-        AND time BETWEEN 1 AND 15
+    WHERE src <> '13.37.84.125' AND hour BETWEEN 1 AND 15
     GROUP BY src
 ) grp
-ORDER BY total_bytes DESC
-LIMIT 1;") %>% knitr::kable()
+ORDER BY trafic DESC
+LIMIT 1;") 
+print(leak_2)
 ```
 
-<table>
-<thead>
-<tr class="header">
-<th style="text-align: left;">src</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">12.55.77.96</td>
-</tr>
-</tbody>
-</table>
+              src
+    1 12.55.77.96
 
 ### Задание 3: Надите утечку данных 3
 
@@ -277,74 +173,47 @@ LIMIT 1;") %>% knitr::kable()
 отличается от нарушителей из предыдущих задач.
 
 ``` r
-dbExecute(con,"CREATE TEMPORARY TABLE task31 AS
+exclude_hosts = dbExecute(con,
+"CREATE TEMPORARY TABLE exclude_hosts AS
 SELECT src, bytes, port
-FROM tbl
+FROM new_tbl
 WHERE src <> '13.37.84.125'
-    AND src <> '12.55.77.96'
-    AND (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%')
-    AND (dst NOT LIKE '12.%' AND dst NOT LIKE '13.%' AND dst NOT LIKE '14.%');")
-```
+    AND src <> '12.55.77.96';")
 
-    [1] 38498353
-
-``` r
-dbGetQuery(con,"SELECT port, AVG(bytes) AS mean_bytes, MAX(bytes) AS max_bytes, SUM(bytes) AS sum_bytes, MAX(bytes) - AVG(bytes) AS Raz
-FROM task31
+unsafe_ports = dbGetQuery(con,
+"SELECT port, AVG(bytes) AS mean_bytes, 
+MAX(bytes) AS max_bytes, 
+SUM(bytes) AS sum_bytes, 
+MAX(bytes) - AVG(bytes) AS diff
+FROM exclude_hosts
 GROUP BY port
-HAVING MAX(bytes) - AVG(bytes) != 0
-ORDER BY Raz DESC
-LIMIT 1;") %>% knitr::kable()
+HAVING diff != 0
+ORDER BY diff DESC
+LIMIT 1;") 
+print(unsafe_ports)
 ```
 
-<table>
-<thead>
-<tr class="header">
-<th style="text-align: right;">port</th>
-<th style="text-align: right;">mean_bytes</th>
-<th style="text-align: right;">max_bytes</th>
-<th style="text-align: right;">sum_bytes</th>
-<th style="text-align: right;">Raz</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">37</td>
-<td style="text-align: right;">35089.99</td>
-<td style="text-align: right;">209402</td>
-<td style="text-align: right;">32136394510</td>
-<td style="text-align: right;">174312</td>
-</tr>
-</tbody>
-</table>
+      port mean_bytes max_bytes    sum_bytes     diff
+    1  119   31612.51    209446 110302445799 177833.5
 
--   Пришли к выводу, что порт 37 наиболее вероятно используется
+-   Пришли к выводу, что порт 119 наиболее вероятно используется
     нарушителем. Посмотрим информацию о нем
 
 ``` r
-dbGetQuery(con,"SELECT src
+leak_3 = dbGetQuery(con,"SELECT src
 FROM (
-    SELECT src, AVG(bytes) AS mean_bytes
-    FROM task31
-    WHERE port = 37
+    SELECT src, AVG(bytes) AS mean
+    FROM exclude_hosts
+    WHERE port = 119
     GROUP BY src
-) AS task32
-ORDER BY mean_bytes DESC
-LIMIT 1;") %>% knitr::kable()
+) AS leak_3
+ORDER BY mean DESC
+LIMIT 1;") 
+print(leak_3)
 ```
 
-<table>
-<thead>
-<tr class="header">
-<th style="text-align: left;">src</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: left;">14.31.107.42</td>
-</tr>
-</tbody>
-</table>
+              src
+    1 18.68.32.32
 
 ## Оценка результата
 

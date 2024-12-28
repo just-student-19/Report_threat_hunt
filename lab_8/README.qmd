@@ -5,31 +5,39 @@
    md:
      output-file: README.md
 ---
-Изначально работа проходила под логином user11.
 
 ## Цель работы 
 
 1. Изучить возможности СУБД DuckDB для обработки и анализ больших данных
 2. Получить навыки применения DuckDB совместно с языком программирования R
 3. Получить навыки анализа метаинфомации о сетевом трафике
-4. Получить навыки применения облачных технологий хранения, подготовки и анализа данных: Yandex Object Storage, Rstudio Server.
 
 ## Исходные данные 
  
 1. Программное обеспечение Windows 10 
 2. Данные tm_data.pqt
-2. Rstudio Server
+2. Rstudio Desktop
 3. Интерпретатор языка R 4.1
 4. DuckDB и Dplyr.
 
 ## Задание
 
 Используя язык программирования R, OLAP СУБД
-DuckDB библиотеку duckdb и облачную IDE Rstudio
-Server, развернутую в Yandex Cloud, выполнить задания
+DuckDB библиотеку duckdb и IDE Rstudio
+Desktop, выполнить задания
 и составить отчет.
 
 ## Ход работы
+
+### Подготовим рабочую среду
+
+```{r}
+library(duckdb)
+library(dplyr)
+download.file("https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",destfile = "tm_data.pqt")
+con <- dbConnect(duckdb())
+dbExecute(con,"CREATE TABLE new_tbl as SELECT * FROM read_parquet('tm_data.pqt')")
+```
 
 ### Задание 1: Надите утечку данных из Вашей сети
 
@@ -39,26 +47,14 @@ Server, развернутую в Yandex Cloud, выполнить задани�
  пересылает гораздо больше информации на внешние ресурсы в Интернете, чем
  остальные компьютеры нашей сети. Определите его IP-адрес.
 
--Подготовим рабочую среду
 
 ```{r}
-options(timeout = 1000000)
-download.file("https://storage.yandexcloud.net/arrow-datasets/tm_data.pqt",destfile = "tm_data.pqt")
-library(duckdb)
-library(dplyr)
-con <- dbConnect(duckdb())
-dbExecute(con,"CREATE TABLE tbl as SELECT * FROM read_parquet('tm_data.pqt')")
-```
-
-2. Решение 
-
-```{r}
-dbGetQuery(con,"SELECT src FROM tbl
-WHERE (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%') 
-AND NOT (dst LIKE '12.%' AND dst LIKE '13.%' AND dst LIKE '14.%')
+leak_1 = dbGetQuery(con,
+"SELECT src FROM new_tbl
 GROUP BY src
 order by sum(bytes) desc
-limit 1") %>% knitr::kable()
+limit 1") 
+print(leak_1)
 ```
 
 ### Задание 2: Надите утечку данных 2
@@ -70,47 +66,41 @@ cron для экспорта содержимого внутренней wiki с
 предыдущей задачи.
 
 ```{r}
-dbGetQuery(con,"SELECT 
-    time,
-    COUNT(*) AS trafictime
+work_hours = dbGetQuery(con,
+"SELECT hour, COUNT(*) AS work_hours
 FROM (
     SELECT 
         timestamp,
         src,
         dst,
         bytes,
-        (
-            (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%')
-            AND (dst NOT LIKE '12.%' AND dst NOT LIKE '13.%' AND dst NOT LIKE '14.%')
-        ) AS trafic,
-        EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS time
-    FROM tbl
+        EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS hour
+    FROM new_tbl
 ) sub
-WHERE trafic = TRUE AND time BETWEEN 0 AND 24
-GROUP BY time
-ORDER BY trafictime DESC;") %>% knitr::kable()
+WHERE hour BETWEEN 0 AND 24
+GROUP BY hour
+ORDER BY work_hours DESC;") 
+print(work_hours)
 ```
  
 - Понимаем, что для поиска будет использоваться временной интервал 0 - 15
  
 ```{r}
-dbGetQuery(con,"
-SELECT src
+leak_2 = dbGetQuery(con,
+"SELECT src
 FROM (
-    SELECT src, SUM(bytes) AS total_bytes
+    SELECT src, SUM(bytes) AS trafic
     FROM (
         SELECT *,
-            EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS time
-        FROM tbl
+            EXTRACT(HOUR FROM epoch_ms(CAST(timestamp AS BIGINT))) AS hour
+        FROM new_tbl
     ) sub
-    WHERE src <> '13.37.84.125'
-        AND (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%')
-        AND (dst NOT LIKE '12.%' AND dst NOT LIKE '13.%' AND dst NOT LIKE '14.%')
-        AND time BETWEEN 1 AND 15
+    WHERE src <> '13.37.84.125' AND hour BETWEEN 1 AND 15
     GROUP BY src
 ) grp
-ORDER BY total_bytes DESC
-LIMIT 1;") %>% knitr::kable()
+ORDER BY trafic DESC
+LIMIT 1;") 
+print(leak_2)
 ```
  
 ### Задание 3: Надите утечку данных 3
@@ -123,34 +113,39 @@ LIMIT 1;") %>% knitr::kable()
 из предыдущих задач.
  
 ```{r}
-dbExecute(con,"CREATE TEMPORARY TABLE task31 AS
+exclude_hosts = dbExecute(con,
+"CREATE TEMPORARY TABLE exclude_hosts AS
 SELECT src, bytes, port
-FROM tbl
+FROM new_tbl
 WHERE src <> '13.37.84.125'
-    AND src <> '12.55.77.96'
-    AND (src LIKE '12.%' OR src LIKE '13.%' OR src LIKE '14.%')
-    AND (dst NOT LIKE '12.%' AND dst NOT LIKE '13.%' AND dst NOT LIKE '14.%');")
+    AND src <> '12.55.77.96';")
 
-dbGetQuery(con,"SELECT port, AVG(bytes) AS mean_bytes, MAX(bytes) AS max_bytes, SUM(bytes) AS sum_bytes, MAX(bytes) - AVG(bytes) AS Raz
-FROM task31
+unsafe_ports = dbGetQuery(con,
+"SELECT port, AVG(bytes) AS mean_bytes, 
+MAX(bytes) AS max_bytes, 
+SUM(bytes) AS sum_bytes, 
+MAX(bytes) - AVG(bytes) AS diff
+FROM exclude_hosts
 GROUP BY port
-HAVING MAX(bytes) - AVG(bytes) != 0
-ORDER BY Raz DESC
-LIMIT 1;") %>% knitr::kable()
+HAVING diff != 0
+ORDER BY diff DESC
+LIMIT 1;") 
+print(unsafe_ports)
 ```
  
-- Пришли к выводу, что порт 37 наиболее вероятно используется нарушителем. Посмотрим информацию о нем
+- Пришли к выводу, что порт 119 наиболее вероятно используется нарушителем. Посмотрим информацию о нем
  
 ```{r}
-dbGetQuery(con,"SELECT src
+leak_3 = dbGetQuery(con,"SELECT src
 FROM (
-    SELECT src, AVG(bytes) AS mean_bytes
-    FROM task31
-    WHERE port = 37
+    SELECT src, AVG(bytes) AS mean
+    FROM exclude_hosts
+    WHERE port = 119
     GROUP BY src
-) AS task32
-ORDER BY mean_bytes DESC
-LIMIT 1;") %>% knitr::kable()
+) AS leak_3
+ORDER BY mean DESC
+LIMIT 1;") 
+print(leak_3)
 ```
 
 ## Оценка результата
