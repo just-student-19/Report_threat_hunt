@@ -99,12 +99,12 @@ odintsovajulia19@yandex.ru
 
 ![](img/7.jpeg)
 
-Ссылка на дашборд:
-https://datalens.yandex.cloud/thi2szmq4w9ef-dashbord-po-setevoy-aktivnosti-odincova
+Ссылка на дашборд: [Yandex DataLens
+Dashboard](https://datalens.yandex.cloud/thi2szmq4w9ef-dashbord-po-setevoy-aktivnosti-odincova)
 
 ## Оценка результата
 
-С использованием инструментов Yandex Datalens были проведены задания по
+С использованием инструментов Yandex Datalens были проделаны задания по
 визуализации данных сетевого трафика.
 
 ## Вывод
